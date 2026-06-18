@@ -3,65 +3,24 @@
     <div v-if="show" class="word-config-overlay" @click.self="$emit('close')">
       <div class="word-config-modal">
         <div class="word-config-modal-header">
-          <span>⚙️ 词库设置</span>
+          <span>📚 词库</span>
           <button class="word-config-modal-close" @click="$emit('close')">✕</button>
         </div>
         <div class="word-config-modal-body">
-          <div class="toggle-row">
-            <label class="toggle-label">
-              <span class="toggle-track">
-                <input type="checkbox" v-model="useSystemWords" class="toggle-input" />
-                <span class="toggle-slider" />
-              </span>
-              <span class="toggle-text">使用系统词库</span>
-            </label>
+          <div class="info-row">
+            <span class="info-icon">📦</span>
+            <span>系统词汇: <strong>{{ systemCount.toLocaleString() }}</strong> 个</span>
           </div>
-
-          <div class="status-section">
-            <div v-if="useSystemWords" class="status-msg status-on">
-              <span class="status-icon">📦</span>
-              <span>系统词库已启用（涵盖所有内置分类）</span>
-            </div>
-            <div v-else class="status-msg status-off">
-              <div class="status-row">
-                <span class="status-icon">📦</span>
-                <span>贡献词汇: <strong>{{ selectedCount }}</strong> 个可用</span>
-              </div>
-
-              <div v-if="fetchError" class="warning-msg">
-                ⚠️ 无法获取贡献词汇列表，请稍后重试
-              </div>
-              <div v-else-if="categories.length === 0" class="warning-msg">
-                🚫 暂无贡献词汇，请先在首页贡献词库
-              </div>
-              <template v-else>
-                <div class="cat-toggles">
-                  <button
-                    v-for="cat in categories"
-                    :key="cat.name"
-                    :class="['cat-toggle', { active: enabledCats.includes(cat.name) }]"
-                    @click="toggleCategory(cat.name)"
-                  >
-                    {{ cat.name }} ({{ cat.count }})
-                  </button>
-                </div>
-                <div class="cat-hint">
-                  未选中 = 不使用该分类，选中的分类词汇合并使用
-                </div>
-                <div v-if="selectedCount < requiredCount" class="warning-msg">
-                  ⚠️ 选中词汇 ({{ selectedCount }}) 不足 ({{ requiredCount }})，游戏过程中可能出现重复词
-                </div>
-                <div v-else class="info-msg">
-                  ✅ 词汇充足
-                </div>
-                <div class="calc-hint">
-                  预计 {{ totalRounds }} 轮 × 每轮 5 选 1 = 需要 {{ requiredCount }} 个不重复词
-                </div>
-              </template>
-            </div>
+          <div class="info-row">
+            <span class="info-icon">✏️</span>
+            <span>玩家贡献: <strong>{{ contributedCount }}</strong> 个</span>
           </div>
-
-          <button class="btn-save-custom" @click="saveConfig">保存配置</button>
+          <div class="info-divider" />
+          <div class="info-merged">
+            <span class="merged-icon">✅</span>
+            <span>已自动合并打乱，共 <strong>{{ totalCount }}</strong> 个词汇候选项</span>
+          </div>
+          <div class="info-hint">每轮随机从中抽取 5 个词供画师选择</div>
         </div>
       </div>
     </div>
@@ -70,101 +29,36 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { useRoomStore } from '@/stores/room'
-import { WORD_SELECTION_OPTIONS_COUNT } from '@draw-and-guess/shared'
-import type { RoomWordConfig } from '@draw-and-guess/shared'
-
-interface CategoryGroup {
-  name: string
-  count: number
-}
 
 const props = defineProps<{
   show: boolean
-  initialConfig?: Partial<RoomWordConfig> | null
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   close: []
-  save: [config: Partial<RoomWordConfig>]
 }>()
 
-const roomStore = useRoomStore()
+const systemCount = ref(0)
+const contributedCount = ref(0)
 
-const useSystemWords = ref(true)
-const categories = ref<CategoryGroup[]>([])
-const enabledCats = ref<string[]>([])
-const fetchError = ref(false)
-
-const players = computed(() => roomStore.room?.players?.length ?? 0)
-const roundsPerPlayer = computed(() => roomStore.room?.roundsPerPlayer ?? 2)
-const totalRounds = computed(() => Math.max(1, players.value * roundsPerPlayer.value))
-const requiredCount = computed(() => totalRounds.value * WORD_SELECTION_OPTIONS_COUNT)
-
-const selectedCount = computed(() => {
-  if (categories.value.length === 0) return 0
-  const names = enabledCats.value
-  if (names.length === 0) {
-    return categories.value.reduce((s, c) => s + c.count, 0)
-  }
-  return categories.value
-    .filter(c => names.includes(c.name))
-    .reduce((s, c) => s + c.count, 0)
-})
-
-function toggleCategory(name: string) {
-  const i = enabledCats.value.indexOf(name)
-  if (i >= 0) {
-    enabledCats.value.splice(i, 1)
-  } else {
-    enabledCats.value.push(name)
-  }
-}
+const totalCount = computed(() => systemCount.value + contributedCount.value)
 
 watch(() => props.show, async (val) => {
-  if (!val) return
-
-  useSystemWords.value = props.initialConfig?.useSystemWords ?? true
-  const savedCats = props.initialConfig?.contributedCategories ?? []
-  enabledCats.value = [...savedCats]
-
-  if (!useSystemWords.value) {
-    await fetchContributed()
+  if (val) {
+    await fetchCounts()
   }
 })
 
-watch(useSystemWords, async (val) => {
-  if (!val && props.show) {
-    await fetchContributed()
-  }
-})
-
-async function fetchContributed() {
-  fetchError.value = false
+async function fetchCounts() {
   try {
     const res = await fetch('/api/words')
     const data = await res.json()
-    const words: Array<{ word: string; category: string }> = data?.words ?? []
-    const map = new Map<string, number>()
-    for (const w of words) {
-      const cat = w.category || '未分类'
-      map.set(cat, (map.get(cat) ?? 0) + 1)
-    }
-    const sorted = [...map.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-    categories.value = sorted
+    systemCount.value = data?.systemTotal ?? 1000
+    contributedCount.value = data?.words?.length ?? 0
   } catch {
-    fetchError.value = true
-    categories.value = []
+    systemCount.value = 1000
+    contributedCount.value = 0
   }
-}
-
-function saveConfig() {
-  emit('save', {
-    useSystemWords: useSystemWords.value,
-    contributedCategories: useSystemWords.value ? [] : [...enabledCats.value],
-  })
 }
 </script>
 
@@ -183,9 +77,7 @@ function saveConfig() {
 .word-config-modal {
   background: #fff;
   border-radius: 14px;
-  width: min(420px, 90vw);
-  max-height: 85vh;
-  overflow-y: auto;
+  width: min(380px, 90vw);
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
 }
 
@@ -209,182 +101,51 @@ function saveConfig() {
 }
 
 .word-config-modal-body {
-  padding: 0.9rem 1rem;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
-}
-
-.toggle-row {
-  display: flex;
-  align-items: center;
-}
-
-.toggle-label {
-  display: flex;
-  align-items: center;
   gap: 0.6rem;
-  cursor: pointer;
-  user-select: none;
 }
 
-.toggle-track {
-  position: relative;
-  display: inline-flex;
+.info-row {
+  display: flex;
   align-items: center;
-}
-
-.toggle-input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  width: 40px;
-  height: 22px;
-  background: var(--color-border);
-  border-radius: 11px;
-  transition: background 0.25s;
-  position: relative;
-}
-
-.toggle-slider::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.25s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-}
-
-.toggle-input:checked + .toggle-slider {
-  background: var(--color-primary);
-}
-
-.toggle-input:checked + .toggle-slider::after {
-  transform: translateX(18px);
-}
-
-.toggle-text {
+  gap: 0.4rem;
   font-size: 0.9rem;
-  font-weight: 500;
   color: var(--color-text);
 }
 
-.status-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
+.info-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
 }
 
-.status-msg {
-  padding: 0.65rem 0.75rem;
-  border-radius: 8px;
-  font-size: 0.82rem;
-  line-height: 1.5;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+.info-divider {
+  height: 1px;
+  background: var(--color-border-light);
+  margin: 0.15rem 0;
 }
 
-.status-row {
+.info-merged {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-}
-
-.status-on {
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  padding: 0.5rem 0.6rem;
   background: var(--color-accent-pale);
-  color: var(--color-text);
+  border-radius: 8px;
 }
 
-.status-off {
-  background: var(--color-bg);
-  border: 1px solid var(--color-border-light);
-  color: var(--color-text);
-}
-
-.status-icon {
+.merged-icon {
   font-size: 0.9rem;
   flex-shrink: 0;
 }
 
-.cat-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.cat-toggle {
-  padding: 0.3rem 0.5rem;
-  border: 1.5px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-bg);
-  color: var(--color-text-secondary);
-  font-size: 0.72rem;
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.cat-toggle.active {
-  background: var(--color-accent-pale);
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  font-weight: 600;
-}
-
-.cat-toggle:hover:not(.active) {
-  border-color: var(--color-accent-light);
-  color: var(--color-text);
-}
-
-.cat-hint {
-  font-size: 0.68rem;
-  color: var(--color-text-muted);
-  line-height: 1.4;
-}
-
-.warning-msg {
-  color: #c96a5e;
+.info-hint {
   font-size: 0.78rem;
-  padding: 0.4rem 0.5rem;
-  background: rgba(217, 117, 107, 0.07);
-  border-radius: 6px;
-}
-
-.info-msg {
-  color: #5a9a56;
-  font-size: 0.78rem;
-  padding: 0.4rem 0.5rem;
-  background: rgba(126, 184, 122, 0.08);
-  border-radius: 6px;
-}
-
-.calc-hint {
-  font-size: 0.72rem;
   color: var(--color-text-muted);
-  padding-top: 0.1rem;
-}
-
-.btn-save-custom {
-  margin-top: 0.25rem;
-  padding: 0.5rem 0.8rem;
-  background: var(--color-accent);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.82rem;
-  cursor: pointer;
-  transition: var(--transition);
-}
-
-.btn-save-custom:hover {
-  opacity: 0.9;
+  text-align: center;
+  padding-top: 0.15rem;
 }
 </style>

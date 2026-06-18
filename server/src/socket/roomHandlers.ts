@@ -4,7 +4,7 @@ import { drawGameManager } from '../game/index.js'
 import { spyGameManager } from '../game/SpyGameManager.js'
 import { lastChatTime } from './drawGameHandlers.js'
 import bcrypt from 'bcrypt'
-import type { Room, RoomWordConfig, GameType } from '@draw-and-guess/shared'
+import type { Room, GameType } from '@draw-and-guess/shared'
 
 function getPlayerRoomData(room: Room) {
   return {
@@ -24,7 +24,6 @@ function getPlayerRoomData(room: Room) {
     currentRound: room.currentRound,
     totalRounds: room.totalRounds,
     roundsPerPlayer: room.roundsPerPlayer,
-    wordConfig: room.wordConfig,
   }
 }
 
@@ -61,7 +60,7 @@ function pruneRejoinStore(): void {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function registerRoomHandlers(io: any, socket: any): void {
-  socket.on(CLIENT_EVENTS.CREATE_ROOM, async ({ nickname, roomName, maxPlayers, password, wordConfig, gameType, roundsPerPlayer }: { nickname: string; roomName?: string; maxPlayers?: number; password?: string; wordConfig?: RoomWordConfig; gameType?: GameType; roundsPerPlayer?: number }) => {
+  socket.on(CLIENT_EVENTS.CREATE_ROOM, async ({ nickname, roomName, maxPlayers, password, gameType, roundsPerPlayer }: { nickname: string; roomName?: string; maxPlayers?: number; password?: string; gameType?: GameType; roundsPerPlayer?: number }) => {
     const trimmedNickname = nickname.trim()
     if (!trimmedNickname || trimmedNickname.length > NICKNAME_MAX_LENGTH) {
       socket.emit(SERVER_EVENTS.ROOM_ERROR, {
@@ -88,7 +87,6 @@ export function registerRoomHandlers(io: any, socket: any): void {
         trimmedName,
         maxPlayers ?? DEFAULT_MAX_PLAYERS,
         password ?? '',
-        wordConfig,
         gameType ?? DEFAULT_GAME_TYPE,
         roundsPerPlayer
       )
@@ -342,48 +340,6 @@ export function registerRoomHandlers(io: any, socket: any): void {
       console.error('[StartGame] Error:', err)
       socket.emit(SERVER_EVENTS.ROOM_ERROR, { code: ErrorCode.GAME_NOT_IN_LOBBY, message: '开始游戏失败，请重试' })
     }
-  })
-
-  socket.on(CLIENT_EVENTS.UPDATE_WORD_CONFIG, ({ wordConfig }: { wordConfig?: Partial<RoomWordConfig> }) => {
-    const { roomId, playerId } = socket.data
-    if (!roomId || !playerId) {
-      socket.emit(SERVER_EVENTS.ROOM_ERROR, {
-        code: ErrorCode.ROOM_NOT_FOUND,
-        message: '连接已断开，请刷新页面重新加入房间',
-      })
-      return
-    }
-
-    const room = roomManager.getRoomById(roomId)
-    if (!room) {
-      socket.emit(SERVER_EVENTS.ROOM_ERROR, {
-        code: ErrorCode.ROOM_NOT_FOUND,
-        message: '房间不存在或已结束',
-      })
-      return
-    }
-
-    const player = room.players.find((p) => p.id === playerId)
-    if (!player?.isOwner) {
-      socket.emit(SERVER_EVENTS.ROOM_ERROR, { code: ErrorCode.NOT_ROOM_OWNER, message: '只有房主可以修改词库设置' })
-      return
-    }
-
-    if (room.state !== 'lobby' && room.state !== 'gameover') {
-      socket.emit(SERVER_EVENTS.ROOM_ERROR, { code: ErrorCode.GAME_NOT_IN_LOBBY, message: '游戏开始后无法修改词库设置' })
-      return
-    }
-
-    if (wordConfig) {
-      if (wordConfig.useSystemWords !== undefined) {
-        room.wordConfig.useSystemWords = wordConfig.useSystemWords
-      }
-      if (wordConfig.contributedCategories !== undefined) {
-        room.wordConfig.contributedCategories = wordConfig.contributedCategories
-      }
-    }
-
-    io.to(room.code).emit(SERVER_EVENTS.WORD_CONFIG_UPDATED, { wordConfig: room.wordConfig })
   })
 
   socket.on(CLIENT_EVENTS.UPDATE_ROUNDS_PER_PLAYER, ({ roundsPerPlayer }: { roundsPerPlayer: number }) => {

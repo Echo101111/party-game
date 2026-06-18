@@ -10,7 +10,6 @@ export const TIMER_TICK_INTERVAL_MS = 1000
 export const TIMER_RECALC_INTERVAL_MS = 100
 
 // ===== Toast / Notification Durations =====
-export const TOAST_SUCCESS_MS = 2000
 export const TOAST_ERROR_MS = 3000
 export const TOAST_LOBBY_ERROR_MS = 4000
 export const SPECTATOR_NOTICE_MS = 4000
@@ -37,7 +36,6 @@ export const WEBRTC_ICE_MAX_RETRIES = 3
 
 // ===== Widget Specific =====
 export const ROOM_LIST_REFRESH_MS = 5000
-export const WORD_CONFIG_SAVE_TIMEOUT_MS = 10000
 export const WORD_CARD_FLIP_DELAY_MS = 800
 export const PTT_TIMEOUT_MS = 15000
 export const PTT_WARN_BEFORE_MS = 3000

@@ -180,12 +180,12 @@
           </div>
           <div class="game-over-actions">
             <button v-if="roomStore.isOwner" class="btn-restart" @click="handleRestartGame">重新开始</button>
-            <button v-if="roomStore.isOwner" class="btn-word-config" @click="showWordConfigGameover = true">⚙️ 词库设置</button>
+            <button v-if="roomStore.isOwner" class="btn-word-config" @click="showWordConfigGameover = true">📚 词库概览</button>
             <button class="btn-leave-game" @click="handleLeave">离开游戏</button>
           </div>
         </div>
 
-        <WordConfigModal :show="showWordConfigGameover" :initial-config="roomStore.room?.wordConfig" @close="showWordConfigGameover = false" @save="onGameoverWordConfigSave" />
+        <WordConfigModal :show="showWordConfigGameover" @close="showWordConfigGameover = false" />
       </div>
 
       <aside class="sidebar sidebar-right">
@@ -208,9 +208,6 @@
     </Transition>
 
     <Transition name="fade">
-      <p v-if="toastSuccess" class="toast toast-success">{{ toastSuccess }}</p>
-    </Transition>
-    <Transition name="fade">
       <p v-if="toastError" class="toast toast-error">{{ toastError }}</p>
     </Transition>
   </div>
@@ -222,8 +219,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { useRoomStore } from '@/stores/room'
 import { useDrawGameStore } from '@/stores/drawGame'
 import { connectSocket, disconnectSocket, getSocket, connectionState, reconnectAttempt } from '@/composables/useSocket'
-import { CLIENT_EVENTS, DRAW_MIN_PLAYERS, TOAST_SUCCESS_MS, TOAST_ERROR_MS, SPECTATOR_NOTICE_MS, GUESSER_STAGGER_DELAY_S } from '@draw-and-guess/shared'
-import type { RoomWordConfig } from '@draw-and-guess/shared'
+import { CLIENT_EVENTS, DRAW_MIN_PLAYERS, TOAST_ERROR_MS, SPECTATOR_NOTICE_MS, GUESSER_STAGGER_DELAY_S } from '@draw-and-guess/shared'
+
 import Timer from '@/components/Timer.vue'
 import Scoreboard from '@/components/Scoreboard.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
@@ -376,19 +373,7 @@ function handleWordSelect(word: string) {
 }
 
 const showWordConfigGameover = ref(false)
-const toastSuccess = ref<string | null>(null)
 const toastError = ref<string | null>(null)
-
-async function onGameoverWordConfigSave(config: Partial<RoomWordConfig>) {
-  try {
-    await roomStore.updateWordConfig(config)
-    toastSuccess.value = '词库设置已保存'
-    setTimeout(() => toastSuccess.value = null, TOAST_SUCCESS_MS)
-    showWordConfigGameover.value = false
-  } catch {
-    // error toast handled by watch on roomStore.error
-  }
-}
 
 watch(() => roomStore.error, (err) => {
   if (err) {

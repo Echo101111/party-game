@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { loadCustomWords } from '../data/customWordBank.js'
+import { TOTAL_WORD_COUNT } from '../data/words.js'
 import { requireAdminToken, loginPage, escapeHtml } from '../middleware/auth.js'
 import { config } from '../config.js'
 import { feedbackStore } from './feedback.js'
@@ -99,17 +100,22 @@ adminRouter.get('/words', requireAdminToken, (_req: Request, res: Response) => {
   const adminToken = escapeHtml(config.adminToken)
   const entries = loadCustomWords()
   const hasRows = entries.length > 0
-  const rows = entries.map(e => `
+  const rows = entries.map((e, i) => `
     <tr>
       <td><input type="checkbox" class="word-cb" value="${escapeHtml(e.word)}"></td>
       <td>${escapeHtml(e.word)}</td>
-      <td>${escapeHtml(e.category)}</td>
+      <td>
+        <span id="cat-${i}">${escapeHtml(e.category)}</span>
+        <button class="btn-edit-sm" onclick="editField('${escapeHtml(e.word)}','category',${i})">✎</button>
+      </td>
+      <td>
+        <span id="syn-${i}">${escapeHtml(e.synonyms?.join(', ') || '—')}</span>
+        <button class="btn-edit-sm" onclick="editField('${escapeHtml(e.word)}','synonyms',${i})">✎</button>
+      </td>
       <td>${new Date(e.addedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</td>
-      <td><button class="btn-del" data-word="${escapeHtml(e.word)}">删除</button></td>
+      <td><button class="btn-del" onclick="delWord('${escapeHtml(e.word)}')">删除</button></td>
     </tr>
   `).join('\n')
-
-  const totalBuiltin = 1283
 
   const body = `
 <style>
@@ -150,6 +156,18 @@ adminRouter.get('/words', requireAdminToken, (_req: Request, res: Response) => {
     font-size: 0.78rem;
   }
   .btn-del:hover { background: #c0392b; }
+  .btn-edit-sm {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #B5A392;
+    font-size: 0.8rem;
+    padding: 0.1rem 0.2rem;
+    opacity: 0.4;
+    transition: opacity 0.15s;
+  }
+  tr:hover .btn-edit-sm { opacity: 1; }
+  .btn-edit-sm:hover { color: #E8856C; }
   .toast {
     position: fixed;
     bottom: 1.5rem;
@@ -166,14 +184,14 @@ adminRouter.get('/words', requireAdminToken, (_req: Request, res: Response) => {
   .toast.error { background: #D9756B; }
   .empty { color: #B5A392; text-align: center; padding: 2rem; }
 </style>
-<div class="stats">共 ${entries.length} 个自定义词 · 内置词库 ${totalBuiltin} 个</div>
+<div class="stats">共 ${entries.length} 个自定义词 · 内置词库 ${TOTAL_WORD_COUNT} 个</div>
 ${hasRows ? `
 <div class="toolbar">
   <label><input type="checkbox" id="select-all"> 全选</label>
   <button class="btn-batch-del" id="btn-batch-del" disabled>🗑 批量删除</button>
 </div>
 <table>
-<thead><tr><th class="col-cb"></th><th>词语</th><th>分类</th><th>提交时间</th><th>操作</th></tr></thead>
+<thead><tr><th class="col-cb"></th><th>词语</th><th>分类</th><th>别名</th><th>提交时间</th><th>操作</th></tr></thead>
 <tbody>${rows}</tbody>
 </table>` : '<div class="empty">暂无自定义词语</div>'}
 <div id="toast" class="toast"></div>
@@ -216,22 +234,37 @@ document.getElementById('btn-batch-del')?.addEventListener('click', async () => 
   } catch (e) { showToast('删除失败 (' + e + ')', 'error') }
 })
 
-document.querySelectorAll('.btn-del').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const word = btn.dataset.word
-    if (!confirm('确认删除 "' + word + '" ？')) return
-    try {
-      const res = await fetch('/api/words/' + encodeURIComponent(word), { method: 'DELETE', headers: apiHeaders })
-      if (!res.ok) {
-        showToast('删除失败 (HTTP ' + res.status + ')', 'error')
-        return
-      }
-      const data = await res.json()
-      showToast(data.message, data.success ? 'success' : 'error')
-      if (data.success) setTimeout(() => location.reload(), 1000)
-    } catch (e) { showToast('删除失败 (' + e + ')', 'error') }
-  })
-})
+async function delWord(word) {
+  if (!confirm('确认删除 "' + word + '" ？')) return
+  try {
+    const res = await fetch('/api/words/' + encodeURIComponent(word), { method: 'DELETE', headers: apiHeaders })
+    if (!res.ok) {
+      showToast('删除失败 (HTTP ' + res.status + ')', 'error')
+      return
+    }
+    const data = await res.json()
+    showToast(data.message, data.success ? 'success' : 'error')
+    if (data.success) setTimeout(() => location.reload(), 1000)
+  } catch (e) { showToast('删除失败 (' + e + ')', 'error') }
+}
+
+async function editField(word, field, idx) {
+  const spanId = field === 'category' ? 'cat-' + idx : 'syn-' + idx
+  const current = document.getElementById(spanId).textContent
+  const label = field === 'category' ? '编辑分类' : '编辑别名（多个用逗号分隔）'
+  const val = prompt(label, current === '—' ? '' : current)
+  if (val === null) return
+  const trimmed = val.trim()
+  const body = field === 'category'
+    ? { category: trimmed }
+    : { synonyms: trimmed ? trimmed.split(',').map(s => s.trim()).filter(Boolean) : [] }
+  try {
+    const res = await fetch('/api/words/' + encodeURIComponent(word), { method: 'PATCH', headers: apiHeaders, body: JSON.stringify(body) })
+    const data = await res.json()
+    if (data.success) location.reload()
+    else showToast(data.message, 'error')
+  } catch (e) { showToast('保存失败: ' + e, 'error') }
+}
 
 function showToast(msg, type) {
   const t = document.getElementById('toast')

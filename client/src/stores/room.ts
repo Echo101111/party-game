@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { getSocket, connectSocket, saveSession, clearSession, waitForConnection, saveNickname } from '@/composables/useSocket'
-import { CLIENT_EVENTS, SERVER_EVENTS, DEFAULT_MAX_PLAYERS, DEFAULT_TOTAL_ROUNDS, DEFAULT_ROUNDS_PER_PLAYER, DEFAULT_GAME_TYPE, WORD_CONFIG_SAVE_TIMEOUT_MS, SOCKET_CONNECT_TIMEOUT_MS } from '@draw-and-guess/shared'
-import type { RoomWordConfig, GameType } from '@draw-and-guess/shared'
+import { CLIENT_EVENTS, SERVER_EVENTS, DEFAULT_MAX_PLAYERS, DEFAULT_TOTAL_ROUNDS, DEFAULT_ROUNDS_PER_PLAYER, DEFAULT_GAME_TYPE, SOCKET_CONNECT_TIMEOUT_MS } from '@draw-and-guess/shared'
+import type { GameType } from '@draw-and-guess/shared'
 
 interface RoomPlayer {
   id: string
@@ -23,7 +23,6 @@ interface RoomData {
   currentRound: number
   totalRounds: number
   roundsPerPlayer: number
-  wordConfig: RoomWordConfig
   gameType: GameType
 }
 
@@ -61,10 +60,6 @@ export const useRoomStore = defineStore('room', () => {
           currentRound: 0,
           totalRounds: DEFAULT_TOTAL_ROUNDS,
           roundsPerPlayer: DEFAULT_ROUNDS_PER_PLAYER,
-          wordConfig: {
-            useSystemWords: true,
-            contributedCategories: [],
-          },
           gameType: DEFAULT_GAME_TYPE,
         }
       }
@@ -139,13 +134,6 @@ export const useRoomStore = defineStore('room', () => {
       isSpectator.value = true
     })
 
-    socket.off(SERVER_EVENTS.WORD_CONFIG_UPDATED)
-    socket.on(SERVER_EVENTS.WORD_CONFIG_UPDATED, (data: { wordConfig: RoomWordConfig }) => {
-      if (room.value) {
-        room.value.wordConfig = data.wordConfig
-      }
-    })
-
     socket.off('disconnect', onSocketDisconnect)
     socket.on('disconnect', onSocketDisconnect)
   }
@@ -178,7 +166,7 @@ export const useRoomStore = defineStore('room', () => {
 
   const createRoom = async (
     nickname: string,
-    options?: { roomName?: string; maxPlayers?: number; password?: string; wordConfig?: RoomWordConfig; gameType?: GameType; roundsPerPlayer?: number }
+    options?: { roomName?: string; maxPlayers?: number; password?: string; gameType?: GameType; roundsPerPlayer?: number }
   ) => {
     connectionState.value = 'connecting'
     error.value = null
@@ -204,7 +192,6 @@ export const useRoomStore = defineStore('room', () => {
       roomName: options?.roomName,
       maxPlayers: options?.maxPlayers,
       password: options?.password,
-      wordConfig: options?.wordConfig,
       gameType: options?.gameType ?? DEFAULT_GAME_TYPE,
       roundsPerPlayer: options?.roundsPerPlayer ?? DEFAULT_ROUNDS_PER_PLAYER,
     })
@@ -297,36 +284,6 @@ export const useRoomStore = defineStore('room', () => {
     }
   }
 
-  const updateWordConfig = (updates: Partial<RoomWordConfig>): Promise<void> => {
-    return new Promise<void>((resolve, reject) => {
-      const socket = getSocket()
-      if (socket?.connected) {
-        let settled = false
-        const onSuccess = () => {
-          if (settled) return
-          settled = true
-          resolve()
-        }
-        const onError = (data: { message?: string }) => {
-          if (settled) return
-          settled = true
-          reject(new Error(data.message ?? '保存失败'))
-        }
-        socket.once(SERVER_EVENTS.WORD_CONFIG_UPDATED, onSuccess)
-        socket.once(SERVER_EVENTS.ROOM_ERROR, onError)
-        setTimeout(() => {
-          if (!settled) {
-            settled = true
-            reject(new Error('保存超时，请重试'))
-          }
-        }, WORD_CONFIG_SAVE_TIMEOUT_MS)
-        socket.emit(CLIENT_EVENTS.UPDATE_WORD_CONFIG, { wordConfig: updates })
-      } else {
-        resolve()
-      }
-    })
-  }
-
   return {
     room,
     currentPlayerId,
@@ -344,7 +301,6 @@ export const useRoomStore = defineStore('room', () => {
     kickPlayer,
     startGame,
     clearError,
-    updateWordConfig,
     updateRoundsPerPlayer,
   }
 })

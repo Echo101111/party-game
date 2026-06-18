@@ -221,27 +221,29 @@ export class GameManager {
   private selectWordOptions(room: Room): WordOption[] {
     const used = this.getUsedWords(room.id)
 
-    let pool: WordOption[]
-
-    if (room.wordConfig.useSystemWords) {
-      pool = WORD_CATEGORIES.flatMap(cat => {
-        const catWords = WORDS[cat]
-        if (!catWords) return []
-        return catWords.map(entry => ({
-          word: entry.word,
-          category: CATEGORY_DISPLAY_NAMES[cat],
-        }))
-      })
-    } else {
-      const allCustom = getAllCustomWordEntries()
-      const enabledCats = room.wordConfig.contributedCategories ?? []
-      pool = (enabledCats.length > 0
-        ? allCustom.filter(e => enabledCats.includes(e.category))
-        : allCustom
-      ).map(entry => ({
+    const systemPool = WORD_CATEGORIES.flatMap(cat => {
+      const catWords = WORDS[cat]
+      if (!catWords) return []
+      return catWords.map(entry => ({
         word: entry.word,
-        category: entry.category,
+        category: CATEGORY_DISPLAY_NAMES[cat],
       }))
+    })
+
+    const contributedPool = getAllCustomWordEntries().map(entry => ({
+      word: entry.word,
+      category: entry.category,
+    }))
+
+    // 合并系统词 + 所有贡献词，按词去重（贡献词优先保留，不区分大小写）
+    const seen = new Set<string>()
+    const pool: WordOption[] = []
+    for (const entry of [...contributedPool, ...systemPool]) {
+      const key = entry.word.toLowerCase()
+      if (!seen.has(key)) {
+        seen.add(key)
+        pool.push(entry)
+      }
     }
 
     // Fisher-Yates 打乱
@@ -333,7 +335,7 @@ export class GameManager {
     return { correct: true, score: totalScore }
   }
 
-  handleDrawStroke(roomId: string, playerId: string, _socketId: string, points: Point[], color: string, width: number, tool: string, strokeSeq?: number, skipRateLimit?: boolean): void {
+  handleDrawStroke(roomId: string, playerId: string, socketId: string, points: Point[], color: string, width: number, tool: string, strokeSeq?: number, skipRateLimit?: boolean): void {
     const room = roomManager.getRoomById(roomId)
     if (!room || room.state !== 'playing') {
       console.log(`[Draw] REJECT: room=${roomId} state=${room?.state} noplayer=${!room}`)
@@ -387,14 +389,26 @@ export class GameManager {
 
     const io = this.getIO()
     if (io) {
-      io.to(room.code).emit(SERVER_EVENTS.DRAW_STROKE, {
-        playerId,
-        points,
-        color,
-        width,
-        tool,
-        strokeSeq,
-      })
+      const senderSocket = io.sockets?.sockets?.get(socketId)
+      if (senderSocket) {
+        senderSocket.broadcast.to(room.code).emit(SERVER_EVENTS.DRAW_STROKE, {
+          playerId,
+          points,
+          color,
+          width,
+          tool,
+          strokeSeq,
+        })
+      } else {
+        io.to(room.code).emit(SERVER_EVENTS.DRAW_STROKE, {
+          playerId,
+          points,
+          color,
+          width,
+          tool,
+          strokeSeq,
+        })
+      }
       if (strokeSeq !== undefined) {
         io.to(playerId).emit(SERVER_EVENTS.ACK_STROKE, {
           strokeSeq,
@@ -570,7 +584,6 @@ export class GameManager {
         finalScores: scores,
         winner,
       })
-      io.to(room.code).emit(SERVER_EVENTS.WORD_CONFIG_UPDATED, { wordConfig: room.wordConfig })
     }
 
     return true

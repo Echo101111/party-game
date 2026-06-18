@@ -42,16 +42,6 @@ export type WordCategory =
   | 'games'
   | 'festivals';
 
-export interface RoomWordConfig {
-  useSystemWords: boolean;
-  contributedCategories: string[];
-}
-
-export const DEFAULT_WORD_CONFIG: RoomWordConfig = {
-  useSystemWords: true,
-  contributedCategories: [],
-};
-
 export interface Room {
   id: string;
   code: string;
@@ -67,7 +57,6 @@ export interface Room {
   roundStartTime: number | null;
   roundDuration: number;
   roundsPerPlayer: number;
-  wordConfig: RoomWordConfig;
   gameType: GameType;
   lastActivityAt: number;
 }

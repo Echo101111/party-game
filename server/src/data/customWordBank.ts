@@ -107,6 +107,23 @@ export function removeCustomWord(word: string): boolean {
   return true
 }
 
+export function updateCustomWord(
+  word: string,
+  updates: { category?: string; synonyms?: string[] }
+): { updated: boolean; reason?: string } {
+  const entries = loadCustomWords()
+  const entry = entries.find(e => e.word === word)
+  if (!entry) return { updated: false, reason: `未找到词语"${word}"` }
+  if (updates.category !== undefined) {
+    entry.category = updates.category
+  }
+  if (updates.synonyms !== undefined) {
+    entry.synonyms = updates.synonyms.length > 0 ? updates.synonyms : undefined
+  }
+  saveRaw(entries)
+  return { updated: true }
+}
+
 export function removeCustomWords(words: string[]): string[] {
   const entries = loadCustomWords()
   const removed: string[] = []

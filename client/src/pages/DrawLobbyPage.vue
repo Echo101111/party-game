@@ -95,7 +95,7 @@
           </button>
 
           <button v-if="isOwner" class="btn-secondary" @click="showWordConfig = true">
-            ⚙️ 词库设置
+            📚 词库概览
           </button>
 
           <button class="btn-secondary btn-leave" @click="handleLeave">
@@ -105,7 +105,7 @@
       </div>
 
       <Transition name="fade">
-        <WordConfigModal :show="showWordConfig" :initial-config="room?.wordConfig" @close="showWordConfig = false" @save="onLobbyConfigSave" />
+        <WordConfigModal :show="showWordConfig" @close="showWordConfig = false" />
       </Transition>
     </div>
 
@@ -123,7 +123,6 @@ import { useDrawGameStore } from '@/stores/drawGame'
 import { getSocket } from '@/composables/useSocket'
 import { CLIENT_EVENTS, DRAW_MIN_PLAYERS, TOAST_LOBBY_ERROR_MS } from '@draw-and-guess/shared'
 import WordConfigModal from '@/components/WordConfigModal.vue'
-import type { RoomWordConfig } from '@draw-and-guess/shared'
 
 const route = useRoute()
 const router = useRouter()
@@ -139,15 +138,6 @@ const gameState = computed(() => room.value?.state)
 
 const errorMessage = ref<string | null>(null)
 const showWordConfig = ref(false)
-
-async function onLobbyConfigSave(config: Partial<RoomWordConfig>) {
-  try {
-    await roomStore.updateWordConfig(config)
-    showWordConfig.value = false
-  } catch {
-    // error handled by watch on roomStore.error
-  }
-}
 
 // If room name in URL doesn't match stored room, redirect
 watch(() => roomStore.room?.code, (code) => {

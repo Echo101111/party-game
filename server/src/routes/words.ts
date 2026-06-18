@@ -1,10 +1,13 @@
 import { Router, type Request, type Response } from 'express'
 import { validateGlobalWord } from '../data/wordValidator.js'
-import { addCustomWord, loadCustomWords, removeCustomWord, removeCustomWords } from '../data/customWordBank.js'
+import { addCustomWord, loadCustomWords, removeCustomWord, removeCustomWords, updateCustomWord } from '../data/customWordBank.js'
 import { invalidateIndex } from '../data/wordIndex.js'
+import { WORDS } from '../data/words.js'
 import { requireAdminToken } from '../middleware/auth.js'
 
 export const wordsRouter: Router = Router()
+
+const systemWordCount = new Set(Object.values(WORDS).flatMap(cat => cat.map(e => e.word))).size
 
 const rateLimitMap = new Map<string, number[]>()
 const RATE_LIMIT_WINDOW = 60_000
@@ -35,7 +38,7 @@ wordsRouter.get('/', (_req: Request, res: Response) => {
     synonyms: e.synonyms,
   }))
   items.reverse()
-  res.json({ words: items, total: items.length })
+  res.json({ words: items, total: items.length, systemTotal: systemWordCount })
 })
 
 wordsRouter.post('/', (req: Request, res: Response) => {
@@ -137,4 +140,27 @@ wordsRouter.delete('/:word', requireAdminToken, (req: Request, res: Response) =>
 
   invalidateIndex()
   res.json({ success: true, message: `已删除"${word}"` })
+})
+
+wordsRouter.patch('/:word', requireAdminToken, (req: Request, res: Response) => {
+  const word = decodeURIComponent(req.params.word).trim()
+  if (!word) {
+    res.status(400).json({ success: false, message: '请指定要修改的词语' })
+    return
+  }
+
+  const { category, synonyms } = req.body as { category?: string; synonyms?: string[] }
+  if (!category && synonyms === undefined) {
+    res.status(400).json({ success: false, message: '请提供要修改的字段（category/synonyms）' })
+    return
+  }
+
+  const result = updateCustomWord(word, { category, synonyms })
+  if (!result.updated) {
+    res.status(404).json({ success: false, message: result.reason ?? '更新失败' })
+    return
+  }
+
+  invalidateIndex()
+  res.json({ success: true, message: `已更新"${word}"` })
 })

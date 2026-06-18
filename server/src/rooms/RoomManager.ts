@@ -1,8 +1,7 @@
 import { randomUUID } from 'crypto'
 import bcrypt from 'bcrypt'
-import type { Player, Room, RoomState, RoomErrorPayload, RoomWordConfig, GameType } from '@draw-and-guess/shared'
-import { ErrorCode, SERVER_EVENTS, DEFAULT_WORD_CONFIG, SPY_MIN_PLAYERS, DRAW_MIN_PLAYERS, NICKNAME_MAX_LENGTH, ROOM_NAME_MAX_LENGTH, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH, BCRYPT_ROUNDS, AVATAR_COUNT, DEFAULT_TOTAL_ROUNDS, DEFAULT_ROUND_DURATION, DEFAULT_ROUNDS_PER_PLAYER, RECONNECT_TIMEOUT_MS, ROOM_DISMISS_TIMEOUT_MS, ROOM_IDLE_TIMEOUT_MS, ROOM_GC_INTERVAL_MS } from '@draw-and-guess/shared'
-import { getAllCustomWordEntries } from '../data/customWordBank.js'
+import type { Player, Room, RoomState, RoomErrorPayload, GameType } from '@draw-and-guess/shared'
+import { ErrorCode, SERVER_EVENTS, SPY_MIN_PLAYERS, DRAW_MIN_PLAYERS, NICKNAME_MAX_LENGTH, ROOM_NAME_MAX_LENGTH, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH, BCRYPT_ROUNDS, AVATAR_COUNT, DEFAULT_TOTAL_ROUNDS, DEFAULT_ROUND_DURATION, DEFAULT_ROUNDS_PER_PLAYER, RECONNECT_TIMEOUT_MS, ROOM_DISMISS_TIMEOUT_MS, ROOM_IDLE_TIMEOUT_MS, ROOM_GC_INTERVAL_MS } from '@draw-and-guess/shared'
 
 function createPlayer(nickname: string, isOwner = false): Player {
   const trimmed = nickname.trim()
@@ -22,7 +21,7 @@ function createPlayer(nickname: string, isOwner = false): Player {
   }
 }
 
-function createRoom(name: string, maxPlayers: number, password: string, owner: Player, wordConfig: RoomWordConfig, gameType: GameType, roundsPerPlayer?: number): Room {
+function createRoom(name: string, maxPlayers: number, password: string, owner: Player, gameType: GameType, roundsPerPlayer?: number): Room {
   const now = Date.now()
   return {
     id: randomUUID(),
@@ -39,7 +38,6 @@ function createRoom(name: string, maxPlayers: number, password: string, owner: P
     roundStartTime: null,
     roundDuration: DEFAULT_ROUND_DURATION,
     roundsPerPlayer: roundsPerPlayer ?? DEFAULT_ROUNDS_PER_PLAYER,
-    wordConfig,
     gameType,
     lastActivityAt: now,
   }
@@ -74,7 +72,6 @@ export class RoomManager {
     roomName: string,
     maxPlayers: number,
     password: string,
-    wordConfig?: RoomWordConfig,
     gameType: GameType = 'draw',
     roundsPerPlayer?: number
   ): Promise<{ room: Room; player: Player }> {
@@ -99,7 +96,7 @@ export class RoomManager {
 
     const owner = createPlayer(nickname, true)
     const hashedPassword = password ? await bcrypt.hash(password, BCRYPT_ROUNDS) : ''
-    const room = createRoom(trimmedName, maxPlayers, hashedPassword, owner, wordConfig ?? DEFAULT_WORD_CONFIG, gameType, roundsPerPlayer)
+    const room = createRoom(trimmedName, maxPlayers, hashedPassword, owner, gameType, roundsPerPlayer)
 
     this.rooms.set(room.id, room)
     this.nameToRoomId.set(normalizedName, room.id)
@@ -227,13 +224,6 @@ export class RoomManager {
     const minPlayers = room.gameType === 'spy' ? SPY_MIN_PLAYERS : DRAW_MIN_PLAYERS
     if (room.players.length < minPlayers) {
       return { success: false, error: { code: ErrorCode.GAME_NOT_IN_LOBBY, message: `至少需要${minPlayers}名玩家才能开始游戏` } }
-    }
-
-    if (!room.wordConfig.useSystemWords) {
-      const contributed = getAllCustomWordEntries()
-      if (contributed.length === 0) {
-        return { success: false, error: { code: ErrorCode.INVALID_WORD_CONFIG, message: '暂无贡献词汇，请先在首页贡献词库后重试' } }
-      }
     }
 
     room.totalRounds = room.players.length * room.roundsPerPlayer
@@ -480,7 +470,6 @@ export class RoomManager {
       currentRound: room.currentRound,
       totalRounds: room.totalRounds,
       roundsPerPlayer: room.roundsPerPlayer,
-      wordConfig: room.wordConfig,
       gameType: room.gameType,
     }
   }

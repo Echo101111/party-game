@@ -256,6 +256,7 @@ function renderCompletedStrokes(extraStrokes?: any[]) {
 
   currentPathObject = null
   renderCurrentStroke()
+  fabricCanvas.renderAll()
 }
 
 function renderCurrentStroke() {
