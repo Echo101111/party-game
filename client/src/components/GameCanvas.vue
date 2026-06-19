@@ -182,12 +182,17 @@ function emitStroke() {
   lastEmitPointCount = allPoints.length
   const cw = fabricCanvas.width ?? 1
   const ch = fabricCanvas.height ?? 1
+  // 坐标归一化后压缩为 uint16 (0-65535)
   gameStore.drawStroke(
-    newPoints.map((p) => ({ x: p.x / cw, y: p.y / ch })),
+    newPoints.map((p) => ({
+      x: Math.round((p.x / cw) * 65535),
+      y: Math.round((p.y / ch) * 65535),
+    })),
     canvasStore.tool === 'eraser' ? ERASER_COLOR : canvasStore.color,
     canvasStore.tool === 'eraser' ? canvasStore.width * ERASER_WIDTH_MULTIPLIER : canvasStore.width,
     canvasStore.tool,
-    strokeSeq
+    strokeSeq,
+    true
   )
 }
 

@@ -375,11 +375,11 @@ export const useDrawGameStore = defineStore('drawGame', () => {
     }
   }
 
-  function drawStroke(points: Point[], color: string, width: number, tool: string, strokeSeq?: number) {
+  function drawStroke(points: Point[], color: string, width: number, tool: string, strokeSeq?: number, compressed?: boolean) {
     if (!isMyTurn.value) return
     const socket = getSocket()
     if (socket?.connected) {
-      socket.emit(CLIENT_EVENTS.DRAW_STROKE, { points, color, width, tool, strokeSeq })
+      socket.emit(CLIENT_EVENTS.DRAW_STROKE, { points, color, width, tool, strokeSeq, compressed })
     }
   }
 
@@ -447,6 +447,13 @@ export const useDrawGameStore = defineStore('drawGame', () => {
     const socket = getSocket()
     if (socket?.connected) {
       socket.emit(CLIENT_EVENTS.SELECT_WORD, { word })
+    }
+  }
+
+  function likeDrawer() {
+    const socket = getSocket()
+    if (socket?.connected) {
+      socket.emit(CLIENT_EVENTS.LIKE_DRAWER)
     }
   }
 
@@ -525,6 +532,7 @@ export const useDrawGameStore = defineStore('drawGame', () => {
     undoStroke,
     addCompletedStroke,
     selectWord,
+    likeDrawer,
     resetGame,
   }
 })

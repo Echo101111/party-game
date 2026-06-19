@@ -30,6 +30,16 @@
       </div>
     </div>
 
+    <div class="reactions-row" v-if="!inputDisabled">
+      <button
+        v-for="emoji in REACTIONS"
+        :key="emoji"
+        class="reaction-btn"
+        @click="sendReaction(emoji)"
+        :title="emoji"
+      >{{ emoji }}</button>
+    </div>
+
     <div class="input-row">
       <div class="input-wrap">
         <input
@@ -51,6 +61,8 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { CHAT_MESSAGE_MAX_LENGTH } from '@draw-and-guess/shared'
 import { useDrawGameStore } from '@/stores/drawGame'
 
+const REACTIONS = ['😂', '🔥', '👏', '😭', '💀', '🎨']
+
 const gameStore = useDrawGameStore()
 const inputText = ref('')
 const messagesRef = ref<HTMLElement | null>(null)
@@ -71,6 +83,11 @@ function handleSend() {
   if (!inputText.value.trim() || inputDisabled.value) return
   gameStore.sendChat(inputText.value.trim())
   inputText.value = ''
+}
+
+function sendReaction(emoji: string) {
+  if (inputDisabled.value) return
+  gameStore.sendChat(emoji)
 }
 
 function formatTime(timestamp: number): string {
@@ -216,6 +233,39 @@ watch(() => gameStore.chatMessages.length, () => {
   font-family: var(--font-number);
 }
 
+.reactions-row {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.3rem 0.75rem 0;
+  flex-shrink: 0;
+}
+
+.reaction-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: var(--transition);
+  line-height: 1;
+  padding: 0;
+}
+
+.reaction-btn:hover {
+  transform: scale(1.2);
+  background: var(--color-bg-warm);
+  border-color: var(--color-accent);
+}
+
+.reaction-btn:active {
+  transform: scale(0.9);
+}
+
 .input-row {
   display: flex;
   gap: 0.5rem;
@@ -299,6 +349,25 @@ watch(() => gameStore.chatMessages.length, () => {
   .message {
     font-size: 0.8rem;
     padding: 0.35rem 0.5rem;
+  }
+
+  .reactions-row {
+    padding: 0.2rem 0.6rem 0;
+    gap: 0.2rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .reactions-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .reaction-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 0.95rem;
+    flex-shrink: 0;
   }
 
   .input-row {

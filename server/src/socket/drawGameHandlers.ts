@@ -32,7 +32,7 @@ export function registerDrawGameHandlers(io: any, socket: any): void {
     }
   })
 
-  socket.on(CLIENT_EVENTS.DRAW_STROKE, ({ points, color, width, tool, strokeSeq }: { points: { x: number; y: number }[]; color: string; width: number; tool: string; strokeSeq: number }) => {
+  socket.on(CLIENT_EVENTS.DRAW_STROKE, ({ points, color, width, tool, strokeSeq, compressed }: { points: { x: number; y: number }[]; color: string; width: number; tool: string; strokeSeq: number; compressed?: boolean }) => {
     const { roomId, playerId } = socket.data
     if (!roomId || !playerId) return
     const room = roomManager.getRoomById(roomId)
@@ -40,7 +40,14 @@ export function registerDrawGameHandlers(io: any, socket: any): void {
 
     try {
       const start = Date.now()
-      drawGameManager.handleDrawStroke(roomId, playerId, socket.id, points, color, width, tool, strokeSeq)
+      // 解压 uint16 → normalized float64
+      const decoded = compressed
+        ? points.map((p: { x: number; y: number }) => ({
+            x: p.x / 65535,
+            y: p.y / 65535,
+          }))
+        : points
+      drawGameManager.handleDrawStroke(roomId, playerId, socket.id, decoded, color, width, tool, strokeSeq)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const m = (global as any).metrics
       m.strokesReceived++
@@ -190,6 +197,18 @@ export function registerDrawGameHandlers(io: any, socket: any): void {
       drawGameManager.handleWordSelection(roomId, playerId, word)
     } catch (err) {
       console.error('[SelectWord] Error:', err)
+    }
+  })
+
+  socket.on(CLIENT_EVENTS.LIKE_DRAWER, () => {
+    const { roomId, playerId } = socket.data
+    if (!roomId || !playerId) return
+    const room = roomManager.getRoomById(roomId)
+    if (!room || room.gameType !== GAME_TYPE_DRAW) return
+    try {
+      drawGameManager.likeDrawer(roomId, playerId)
+    } catch (err) {
+      console.error('[LikeDrawer] Error:', err)
     }
   })
 }

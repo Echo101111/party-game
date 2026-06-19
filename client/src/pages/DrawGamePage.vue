@@ -164,6 +164,9 @@
                 <span class="rt-dot"></span>
               </div>
             </div>
+            <div v-if="canLikeDrawer" class="rt-piece" :style="{ animationDelay: '2.3s' }">
+              <button class="btn-like" @click="handleLikeDrawer">👍 给画师点赞</button>
+            </div>
           </div>
         </div>
 
@@ -250,6 +253,10 @@ function addGestureGuard(el: EventTarget, type: string, fn: GestureHandler) {
 
 // 中途加入提示（房间已开始游戏，当前轮仅观战）
 const showSpectatorNotice = ref(false)
+
+const canLikeDrawer = computed(() =>
+  gameStore.myRole === 'guesser' && !gameStore.hasGuessedCorrectly
+)
 
 const transitionWord = computed(() => gameStore.transitionData?.word ?? '')
 const transitionRound = computed(() => gameStore.transitionData?.round ?? gameStore.currentRound)
@@ -371,6 +378,10 @@ function handleStartGame() {
 
 function handleWordSelect(word: string) {
   gameStore.selectWord(word)
+}
+
+function handleLikeDrawer() {
+  gameStore.likeDrawer()
 }
 
 const showWordConfigGameover = ref(false)
@@ -773,6 +784,29 @@ watch(() => roomStore.error, (err) => {
   font-size: 0.85rem;
   color: var(--color-text-muted);
   animation: rtPulse 1.2s ease-in-out infinite;
+}
+
+.btn-like {
+  padding: 0.45rem 1.2rem;
+  border: 2px solid var(--color-accent);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.btn-like:hover {
+  background: var(--color-accent);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(244, 162, 97, 0.3);
+}
+
+.btn-like:active {
+  transform: scale(0.95);
 }
 
 .rt-dot {
@@ -1365,6 +1399,7 @@ watch(() => roomStore.error, (err) => {
   .rt-next-name { font-size: 1.1rem; }
   .rt-reason-tag { font-size: 0.75rem; }
   .rt-countdown { font-size: 0.78rem; }
+  .btn-like { padding: 0.35rem 1rem; font-size: 0.78rem; }
 
   .inline-chat-wrap {
     width: 100%;

@@ -78,6 +78,7 @@ export class GameManager {
     this.strokeSeqIndex.delete(roomId)
     this.undoneStrokes.delete(roomId)
     this.roundEnding.delete(roomId)
+    this.roundLikers.delete(roomId)
     this.currentDrawerId.set(roomId, drawer.id)
 
     const drawerData = {
@@ -507,6 +508,8 @@ export class GameManager {
   }
 
   private roundEnding = new Set<string>()
+  private drawerLikes = new Map<string, Map<string, number>>()
+  private roundLikers = new Map<string, Set<string>>()
 
   endRound(roomId: string, reason: 'timeout' | 'all_guessed'): void {
     if (this.roundEnding.has(roomId)) return
@@ -601,6 +604,8 @@ export class GameManager {
     this.undoneStrokes.delete(roomId)
     this.roundEnding.delete(roomId)
     this.currentDrawerId.delete(roomId)
+    this.drawerLikes.delete(roomId)
+    this.roundLikers.delete(roomId)
     this.cleanupPlayerTimestamps(roomId)
     roomManager.resetGameState(roomId)
   }
@@ -640,15 +645,51 @@ export class GameManager {
   }
 
   getScoreboard(room: Room) {
+    const likes = this.drawerLikes.get(room.id) ?? new Map()
     return room.players
       .map((p) => ({
         playerId: p.id,
         nickname: p.nickname,
         score: p.score,
         isGuessOnly: p.isGuessOnly ?? false,
+        likes: likes.get(p.id) ?? 0,
       }))
       .sort((a, b) => b.score - a.score)
       .map((s, i) => ({ ...s, rank: i + 1 }))
+  }
+
+  likeDrawer(roomId: string, playerId: string): boolean {
+    const room = roomManager.getRoomById(roomId)
+    if (!room || room.state !== 'playing') return false
+
+    const drawerId = this.currentDrawerId.get(roomId)
+    if (!drawerId || drawerId === playerId) return false
+
+    // 本轮已点赞过
+    const likers = this.roundLikers.get(roomId)
+    if (likers?.has(playerId)) return false
+
+    let roomLikes = this.drawerLikes.get(roomId)
+    if (!roomLikes) {
+      roomLikes = new Map()
+      this.drawerLikes.set(roomId, roomLikes)
+    }
+    roomLikes.set(drawerId, (roomLikes.get(drawerId) ?? 0) + 1)
+
+    let likersSet = this.roundLikers.get(roomId)
+    if (!likersSet) {
+      likersSet = new Set()
+      this.roundLikers.set(roomId, likersSet)
+    }
+    likersSet.add(playerId)
+
+    const io = this.getIO()
+    if (io) {
+      io.to(room.code).emit(SERVER_EVENTS.SCOREBOARD_UPDATE, {
+        scores: this.getScoreboard(room),
+      })
+    }
+    return true
   }
 
   private selectNextDrawer(room: Room): Player | null {

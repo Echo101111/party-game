@@ -95,6 +95,7 @@ export interface PlayerScore {
   score: number;
   rank: number;
   isGuessOnly?: boolean;
+  likes?: number;
 }
 
 // === Error ===

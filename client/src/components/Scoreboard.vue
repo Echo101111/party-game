@@ -19,6 +19,7 @@
         <span class="nickname">
           {{ entry.nickname }}
           <span v-if="entry.isGuessOnly" class="guess-only-badge" title="只猜不画">🙊</span>
+          <span v-if="entry.likes" class="likes-badge" title="获得的点赞">❤️{{ entry.likes }}</span>
         </span>
         <span class="score">{{ entry.score }}</span>
       </li>
@@ -123,6 +124,14 @@ const sortedScores = computed(() => {
 .guess-only-badge {
   font-size: 0.7rem;
   margin-left: 0.2rem;
+  vertical-align: middle;
+}
+
+.likes-badge {
+  font-size: 0.65rem;
+  margin-left: 0.25rem;
+  color: var(--color-danger);
+  font-weight: 600;
   vertical-align: middle;
 }
 
