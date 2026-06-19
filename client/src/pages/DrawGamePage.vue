@@ -255,7 +255,7 @@ function addGestureGuard(el: EventTarget, type: string, fn: GestureHandler) {
 const showSpectatorNotice = ref(false)
 
 const canLikeDrawer = computed(() =>
-  gameStore.myRole === 'guesser' && !gameStore.hasGuessedCorrectly
+  gameStore.myRole === 'guesser'
 )
 
 const transitionWord = computed(() => gameStore.transitionData?.word ?? '')
