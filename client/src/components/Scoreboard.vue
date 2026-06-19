@@ -16,7 +16,10 @@
           <template v-else-if="entry.rank === 3">🥉</template>
           <template v-else>{{ entry.rank }}</template>
         </span>
-        <span class="nickname">{{ entry.nickname }}</span>
+        <span class="nickname">
+          {{ entry.nickname }}
+          <span v-if="entry.isGuessOnly" class="guess-only-badge" title="只猜不画">🙊</span>
+        </span>
         <span class="score">{{ entry.score }}</span>
       </li>
     </ul>
@@ -115,6 +118,12 @@ const sortedScores = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.guess-only-badge {
+  font-size: 0.7rem;
+  margin-left: 0.2rem;
+  vertical-align: middle;
 }
 
 .score {

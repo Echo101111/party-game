@@ -38,10 +38,10 @@
           <button
             v-if="roomStore.isOwner"
             class="btn-start-game"
-            :disabled="roomStore.players.length < DRAW_MIN_PLAYERS"
+            :disabled="roomStore.players.length < DRAW_MIN_PLAYERS || drawerCount < 1"
             @click="handleStartGame"
           >
-            <span>{{ roomStore.players.length < DRAW_MIN_PLAYERS ? '等待更多玩家...' : '开始游戏' }}</span>
+            <span>{{ roomStore.players.length < DRAW_MIN_PLAYERS ? '等待更多玩家...' : (drawerCount < 1 ? '需要非只猜不画玩家...' : '开始游戏') }}</span>
           </button>
         </div>
 
@@ -235,6 +235,7 @@ const roomStore = useRoomStore()
 const gameStore = useDrawGameStore()
 
 const roomName = computed(() => route.params.roomName as string)
+const drawerCount = computed(() => roomStore.players.filter(p => !p.isGuessOnly).length)
 const showScoreboard = ref(false)
 const showLeaveConfirm = ref(false)
 const showDrawerAlert = ref(false)

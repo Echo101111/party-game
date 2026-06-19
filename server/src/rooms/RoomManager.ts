@@ -15,6 +15,7 @@ function createPlayer(nickname: string, isOwner = false): Player {
     isOwner,
     score: 0,
     hasGuessedCorrectly: false,
+    isGuessOnly: false,
     avatar: Math.floor(Math.random() * AVATAR_COUNT),
     joinedAt: Date.now(),
     lastActiveAt: Date.now(),
@@ -225,8 +226,12 @@ export class RoomManager {
     if (room.players.length < minPlayers) {
       return { success: false, error: { code: ErrorCode.GAME_NOT_IN_LOBBY, message: `至少需要${minPlayers}名玩家才能开始游戏` } }
     }
+    const drawerCount = room.players.filter(p => !p.isGuessOnly).length
+    if (room.gameType !== 'spy' && drawerCount < 1) {
+      return { success: false, error: { code: ErrorCode.GAME_NOT_IN_LOBBY, message: '至少需要1位不开启"只猜不画"的玩家来画画' } }
+    }
 
-    room.totalRounds = room.players.length * room.roundsPerPlayer
+    room.totalRounds = (room.gameType === 'spy' ? room.players.length : drawerCount) * room.roundsPerPlayer
     room.state = 'playing'
     room.currentRound = 1
     room.players.forEach((p) => {
@@ -442,7 +447,8 @@ export class RoomManager {
 
     room.state = 'lobby'
     room.currentRound = 0
-    room.totalRounds = room.players.length > 0 ? room.players.length * room.roundsPerPlayer : DEFAULT_TOTAL_ROUNDS
+    const drawerCount = room.players.filter(p => !p.isGuessOnly).length
+    room.totalRounds = drawerCount > 0 ? drawerCount * room.roundsPerPlayer : DEFAULT_TOTAL_ROUNDS
     room.currentWord = null
     room.currentWordCategory = undefined
     room.roundStartTime = null
@@ -465,6 +471,7 @@ export class RoomManager {
         isOwner: p.isOwner,
         score: p.score,
         hasGuessedCorrectly: p.hasGuessedCorrectly,
+        isGuessOnly: p.isGuessOnly ?? false,
         avatar: p.avatar,
       })),
       currentRound: room.currentRound,

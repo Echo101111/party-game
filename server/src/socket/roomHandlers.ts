@@ -20,6 +20,7 @@ function getPlayerRoomData(room: Room) {
       isOwner: p.isOwner,
       score: p.score,
       hasGuessedCorrectly: p.hasGuessedCorrectly,
+      isGuessOnly: p.isGuessOnly ?? false,
     })),
     currentRound: room.currentRound,
     totalRounds: room.totalRounds,
@@ -358,6 +359,26 @@ export function registerRoomHandlers(io: any, socket: any): void {
     if (clamped !== roundsPerPlayer) return
 
     room.roundsPerPlayer = clamped
+    io.to(room.code).emit(SERVER_EVENTS.ROOM_UPDATED, { room: getPlayerRoomData(room) })
+  })
+
+  socket.on(CLIENT_EVENTS.SET_GUESS_ONLY, ({ isGuessOnly }: { isGuessOnly: boolean }) => {
+    const { roomId, playerId } = socket.data
+    if (!roomId || !playerId) return
+
+    if (typeof isGuessOnly !== 'boolean') return
+
+    const room = roomManager.getRoomById(roomId)
+    if (!room) return
+
+    // 只在 draw 游戏、lobby/gameover 状态允许修改
+    if (room.gameType !== 'draw') return
+    if (room.state !== 'lobby' && room.state !== 'gameover') return
+
+    const player = room.players.find((p) => p.id === playerId)
+    if (!player) return
+
+    player.isGuessOnly = isGuessOnly
     io.to(room.code).emit(SERVER_EVENTS.ROOM_UPDATED, { room: getPlayerRoomData(room) })
   })
 

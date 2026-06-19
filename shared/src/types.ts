@@ -6,6 +6,7 @@ export interface Player {
   isOwner: boolean;
   score: number;
   hasGuessedCorrectly: boolean;
+  isGuessOnly?: boolean;
   isSpectator?: boolean;
   avatar: number;
   joinedAt: number;
@@ -93,6 +94,7 @@ export interface PlayerScore {
   nickname: string;
   score: number;
   rank: number;
+  isGuessOnly?: boolean;
 }
 
 // === Error ===

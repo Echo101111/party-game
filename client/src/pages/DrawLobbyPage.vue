@@ -28,6 +28,19 @@
                 <div class="player-tags">
                   <span v-if="player.id === currentPlayerId" class="tag tag-you">你</span>
                   <span v-if="player.isOwner" class="tag tag-owner">房主</span>
+                  <span v-if="player.isGuessOnly && player.id !== currentPlayerId" class="tag tag-guess-only">🙊 只猜不画</span>
+                </div>
+                <div v-if="player.id === currentPlayerId" class="guess-only-toggle">
+                  <label class="toggle-switch">
+                    <input
+                      type="checkbox"
+                      :checked="currentPlayerGuessOnly"
+                      :disabled="gameState === 'playing'"
+                      @change="toggleGuessOnly"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <span class="toggle-label">🙊 只猜不画</span>
                 </div>
               </div>
               <button
@@ -50,7 +63,7 @@
       <div v-if="isOwner && gameState !== 'playing'" class="rounds-setting">
         <label class="rounds-label">
           <span>每人画 <strong>{{ room?.roundsPerPlayer ?? 2 }}</strong> 轮</span>
-          <span class="rounds-info">共 {{ (room?.players.length ?? 0) * (room?.roundsPerPlayer ?? 2) }} 轮</span>
+          <span class="rounds-info">共 {{ drawerCount * (room?.roundsPerPlayer ?? 2) }} 轮</span>
         </label>
         <input
           type="range"
@@ -70,11 +83,11 @@
         <button
           v-if="isOwner"
           class="btn-start"
-          :disabled="players.length < DRAW_MIN_PLAYERS || gameState === 'playing' || roomStore.connectionState !== 'connected'"
+          :disabled="players.length < DRAW_MIN_PLAYERS || drawerCount < 1 || gameState === 'playing' || roomStore.connectionState !== 'connected'"
           @click="handleStartGame"
         >
-          <span class="btn-start-icon">{{ players.length < DRAW_MIN_PLAYERS ? '👥' : '🎯' }}</span>
-          {{ roomStore.connectionState !== 'connected' ? '连接中...' : (players.length < DRAW_MIN_PLAYERS ? '等待更多玩家...' : '开始游戏') }}
+          <span class="btn-start-icon">{{ players.length < DRAW_MIN_PLAYERS || drawerCount < 1 ? '👥' : '🎯' }}</span>
+          {{ roomStore.connectionState !== 'connected' ? '连接中...' : (players.length < DRAW_MIN_PLAYERS ? '等待更多玩家...' : (drawerCount < 1 ? '需要非只猜不画玩家...' : '开始游戏')) }}
         </button>
 
         <div class="lobby-actions-secondary">
@@ -135,6 +148,13 @@ const players = computed(() => roomStore.players)
 const currentPlayerId = computed(() => roomStore.currentPlayerId)
 const isOwner = computed(() => roomStore.isOwner)
 const gameState = computed(() => room.value?.state)
+
+const currentPlayerGuessOnly = computed(() => {
+  const p = players.value.find(p => p.id === currentPlayerId.value)
+  return p?.isGuessOnly ?? false
+})
+
+const drawerCount = computed(() => players.value.filter(p => !p.isGuessOnly).length)
 
 const errorMessage = ref<string | null>(null)
 const showWordConfig = ref(false)
@@ -213,6 +233,11 @@ function handleRoundsChange(e: Event) {
   const target = e.target as HTMLInputElement
   const val = parseInt(target.value, 10)
   roomStore.updateRoundsPerPlayer(val)
+}
+
+function toggleGuessOnly(e: Event) {
+  const target = e.target as HTMLInputElement
+  roomStore.setGuessOnly(target.checked)
 }
 
 function dismissRoom() {
@@ -415,6 +440,73 @@ function handleLeave() {
 .tag-owner {
   background: var(--color-gold-bg);
   color: var(--color-gold);
+}
+
+.tag-guess-only {
+  background: var(--color-border-light);
+  color: var(--color-text-muted);
+  font-size: 0.65rem;
+}
+
+.guess-only-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+.toggle-label {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--color-border);
+  border-radius: 18px;
+  transition: var(--transition);
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: var(--transition);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--color-primary);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(12px);
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .btn-kick {

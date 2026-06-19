@@ -10,6 +10,7 @@ interface RoomPlayer {
   isOwner: boolean
   score: number
   hasGuessedCorrectly: boolean
+  isGuessOnly: boolean
   avatar: number
 }
 
@@ -284,6 +285,13 @@ export const useRoomStore = defineStore('room', () => {
     }
   }
 
+  const setGuessOnly = (isGuessOnly: boolean) => {
+    const socket = getSocket()
+    if (socket?.connected) {
+      socket.emit(CLIENT_EVENTS.SET_GUESS_ONLY, { isGuessOnly })
+    }
+  }
+
   return {
     room,
     currentPlayerId,
@@ -302,5 +310,6 @@ export const useRoomStore = defineStore('room', () => {
     startGame,
     clearError,
     updateRoundsPerPlayer,
+    setGuessOnly,
   }
 })

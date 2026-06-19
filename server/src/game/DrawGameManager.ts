@@ -96,6 +96,7 @@ export class GameManager {
         isOwner: p.isOwner,
         score: p.score,
         hasGuessedCorrectly: p.hasGuessedCorrectly,
+        isGuessOnly: p.isGuessOnly ?? false,
       }))
 
     return this.startSelectionRound(room, drawer, drawerData, guesserData)
@@ -179,6 +180,7 @@ export class GameManager {
         isOwner: p.isOwner,
         score: p.score,
         hasGuessedCorrectly: p.hasGuessedCorrectly,
+        isGuessOnly: p.isGuessOnly ?? false,
       }))
 
     const io = this.getIO()
@@ -643,6 +645,7 @@ export class GameManager {
         playerId: p.id,
         nickname: p.nickname,
         score: p.score,
+        isGuessOnly: p.isGuessOnly ?? false,
       }))
       .sort((a, b) => b.score - a.score)
       .map((s, i) => ({ ...s, rank: i + 1 }))
@@ -650,15 +653,16 @@ export class GameManager {
 
   private selectNextDrawer(room: Room): Player | null {
     if (room.players.length === 0) return null
-    const players = room.players
-    const prevDrawerId = this.currentDrawerId.get(room.id)
+    // 过滤掉只猜不画的玩家，掉线的在循环中跳过
+    const drawerPool = room.players.filter(p => !p.isGuessOnly)
+    if (drawerPool.length === 0) return null
 
-    // 轮转查找下一个在线玩家（sessionId 非空 = 在线）
-    const prevIndex = players.findIndex((p) => p.id === prevDrawerId)
-    const startIndex = prevIndex === -1 ? 0 : (prevIndex + 1) % players.length
-    for (let i = 0; i < players.length; i++) {
-      const idx = (startIndex + i) % players.length
-      if (players[idx].sessionId) return players[idx]
+    const prevDrawerId = this.currentDrawerId.get(room.id)
+    const prevIndex = drawerPool.findIndex((p) => p.id === prevDrawerId)
+    const startIndex = prevIndex === -1 ? 0 : (prevIndex + 1) % drawerPool.length
+    for (let i = 0; i < drawerPool.length; i++) {
+      const idx = (startIndex + i) % drawerPool.length
+      if (drawerPool[idx].sessionId) return drawerPool[idx]
     }
     return null
   }
@@ -776,6 +780,7 @@ export class GameManager {
         playerId: p.id,
         nickname: p.nickname,
         score: p.score,
+        isGuessOnly: p.isGuessOnly ?? false,
       })),
       currentWord: drawerId && playerId === drawerId ? room.currentWord : undefined,
       wordLength: room.currentWord?.length ?? 0,
@@ -816,6 +821,7 @@ export class GameManager {
         isOwner: p.isOwner,
         score: p.score,
         hasGuessedCorrectly: p.hasGuessedCorrectly,
+        isGuessOnly: p.isGuessOnly ?? false,
       }))
 
     if (playerId === pending.drawerId) {
