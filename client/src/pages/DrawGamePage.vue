@@ -91,6 +91,14 @@
             <template v-else>
               <span class="info-hint">{{ gameStore.wordPlaceholders || '?' }}</span>
               <span class="info-drawer">· 画师：{{ gameStore.drawerNickname }}</span>
+              <button
+                v-if="gameStore.myRole === 'guesser'"
+                class="btn-like-during"
+                :class="{ liked: likedThisRound }"
+                @click="handleLikeDrawer"
+                :disabled="likedThisRound"
+                :title="likedThisRound ? '已点赞' : '给画师点赞'"
+              >{{ likedThisRound ? '❤️' : '👍' }}</button>
             </template>
 
             <span v-if="gameStore.showCategoryHint" class="info-category">
@@ -163,9 +171,6 @@
                 <span>准备中</span>
                 <span class="rt-dot"></span>
               </div>
-            </div>
-            <div v-if="canLikeDrawer" class="rt-piece" :style="{ animationDelay: '2.3s' }">
-              <button class="btn-like" @click="handleLikeDrawer">👍 给画师点赞</button>
             </div>
           </div>
         </div>
@@ -253,10 +258,7 @@ function addGestureGuard(el: EventTarget, type: string, fn: GestureHandler) {
 
 // 中途加入提示（房间已开始游戏，当前轮仅观战）
 const showSpectatorNotice = ref(false)
-
-const canLikeDrawer = computed(() =>
-  gameStore.myRole === 'guesser'
-)
+const likedThisRound = ref(false)
 
 const transitionWord = computed(() => gameStore.transitionData?.word ?? '')
 const transitionRound = computed(() => gameStore.transitionData?.round ?? gameStore.currentRound)
@@ -284,8 +286,9 @@ watch(() => gameStore.myRole, (role) => {
   }
 })
 
-// 新轮次开始时重置 alert 状态，同一个人再次当画师也能显示
+// 新轮次开始时重置 alert 和点赞状态
 watch(() => gameStore.currentRound, () => {
+  likedThisRound.value = false
   if (gameStore.myRole === 'drawer' && gameStore.state === 'playing') {
     showDrawerAlert.value = true
     document.title = '🎨 轮到你了！ - Oiiiii早春'
@@ -381,6 +384,8 @@ function handleWordSelect(word: string) {
 }
 
 function handleLikeDrawer() {
+  if (likedThisRound.value) return
+  likedThisRound.value = true
   gameStore.likeDrawer()
 }
 
@@ -786,27 +791,42 @@ watch(() => roomStore.error, (err) => {
   animation: rtPulse 1.2s ease-in-out infinite;
 }
 
-.btn-like {
-  padding: 0.45rem 1.2rem;
-  border: 2px solid var(--color-accent);
-  border-radius: var(--radius-full);
-  background: var(--color-surface);
-  color: var(--color-accent);
-  font-size: 0.85rem;
-  font-weight: 600;
+.btn-like-during {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
   cursor: pointer;
+  font-size: 1rem;
   transition: var(--transition);
-  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
 }
 
-.btn-like:hover {
-  background: var(--color-accent);
-  color: #fff;
-  box-shadow: 0 2px 12px rgba(244, 162, 97, 0.3);
+.btn-like-during:hover:not(:disabled) {
+  background: var(--color-accent-pale);
+  transform: scale(1.2);
 }
 
-.btn-like:active {
-  transform: scale(0.95);
+.btn-like-during.liked {
+  cursor: default;
+  opacity: 1;
+  animation: likePop 0.3s ease-out;
+}
+
+.btn-like-during:disabled {
+  cursor: default;
+}
+
+@keyframes likePop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.4); }
+  100% { transform: scale(1); }
 }
 
 .rt-dot {
@@ -1360,6 +1380,12 @@ watch(() => roomStore.error, (err) => {
   .role-icon { font-size: 0.8rem; }
   .role-text { font-size: 0.7rem; }
 
+  .btn-like-during {
+    width: 24px;
+    height: 24px;
+    font-size: 0.85rem;
+  }
+
   .game-info-row {
     gap: 0.3rem;
     padding: 0.3rem 0.5rem;
@@ -1399,8 +1425,6 @@ watch(() => roomStore.error, (err) => {
   .rt-next-name { font-size: 1.1rem; }
   .rt-reason-tag { font-size: 0.75rem; }
   .rt-countdown { font-size: 0.78rem; }
-  .btn-like { padding: 0.35rem 1rem; font-size: 0.78rem; }
-
   .inline-chat-wrap {
     width: 100%;
     flex: 1;

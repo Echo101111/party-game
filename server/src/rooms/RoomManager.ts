@@ -170,6 +170,17 @@ export class RoomManager {
     room.players.splice(playerIndex, 1)
     this.cleanupPlayer(player.id)
 
+    // 如果剩余玩家全部断线，立即清扫，不等 60s 重连超时
+    if (room.players.length > 0 && room.players.every(p => !p.sessionId)) {
+      for (const p of room.players) {
+        this.cancelDisconnectTimer(p.id)
+        this.playerToRoomId.delete(p.id)
+        this.playerSocketMap.delete(p.id)
+        this.onPlayerRemovedCallbacks.forEach((cb) => cb(p.id, roomId))
+      }
+      room.players = []
+    }
+
     let ownerChanged = false
     if (wasOwner && room.players.length > 0) {
       room.players[0].isOwner = true
