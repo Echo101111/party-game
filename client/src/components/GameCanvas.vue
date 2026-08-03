@@ -9,11 +9,14 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { fabric } from 'fabric'
 import { useCanvasStore } from '@/stores/canvas'
 import { useDrawGameStore } from '@/stores/drawGame'
+import { useRoomStore } from '@/stores/room'
 import { EMIT_INTERVAL_MS, ERASER_COLOR, ERASER_WIDTH_MULTIPLIER, STROKE_MIN_POINTS, STROKE_SIMPLIFY_TOLERANCE, CANVAS_ASPECT_RATIO, BREAKPOINT_MOBILE, CANVAS_BG_COLOR } from '@draw-and-guess/shared'
 import type { Point } from '@draw-and-guess/shared'
 
 type FabricCanvas = InstanceType<typeof fabric.Canvas>
 type FabricPath = InstanceType<typeof fabric.Path>
+type FabricCircle = InstanceType<typeof fabric.Circle>
+type FabricObject = FabricPath | FabricCircle
 
 const props = defineProps<{
   readonly?: boolean
@@ -28,11 +31,11 @@ let fabricCanvas: FabricCanvas | null = null
 let lastEmitTime = 0
 let lastEmitPointCount = 0
 let resizeObserver: ResizeObserver | null = null
-let currentPathObject: FabricPath | null = null
+let currentPathObject: FabricObject | null = null
 let pendingResize = false
 let strokeSeq = 0
 const EMIT_INTERVAL = EMIT_INTERVAL_MS
-const strokePathMap = new Map<string, FabricPath>()
+const strokePathMap = new Map<string, FabricObject>()
 
 function getCanvasPoint(e: { e: MouseEvent | Touch }): Point {
   const pointer = fabricCanvas?.getPointer(e.e as unknown as MouseEvent)
@@ -78,24 +81,14 @@ function handleTouchEnd(e: TouchEvent) {
   e.preventDefault()
   if (props.readonly || !gameStore.isMyTurn) return
   
-  // 保存当前笔画数据（在 finalizeStroke 清空之前）
-  const strokeData = canvasStore.currentStroke.length > 0 && fabricCanvas ? {
-    playerId: '',
-    points: canvasStore.currentStroke.map((p) => ({ x: p.x / (fabricCanvas!.width ?? 1), y: p.y / (fabricCanvas!.height ?? 1) })),
-    color: canvasStore.tool === 'eraser' ? ERASER_COLOR : canvasStore.color,
-    width: canvasStore.tool === 'eraser' ? canvasStore.width * ERASER_WIDTH_MULTIPLIER : canvasStore.width,
-    tool: canvasStore.tool,
-    strokeSeq,
-  } : null
-  
-  if (canvasStore.currentStroke.length > 0) emitStroke()
-  finalizeStroke()
-  
-  // 清除临时路径对象
-  currentPathObject = null
-  
-  // 触发完整重绘（包含刚完成的笔画）
-  renderCompletedStrokes(strokeData ? [strokeData] : undefined)
+  const hadStroke = canvasStore.currentStroke.length > 0
+  if (hadStroke) {
+    const thisSeq = strokeSeq
+    emitStroke()
+    finalizeStroke()
+    const newStroke = findOwnStroke(thisSeq)
+    if (newStroke) addStrokesToCanvas([newStroke])
+  }
   
   if (pendingResize) { pendingResize = false; resizeCanvas() }
 }
@@ -126,26 +119,28 @@ function handleMouseMove(e: { e: MouseEvent }) {
 function handleMouseUp() {
   if (props.readonly || !gameStore.isMyTurn) return
   
-  // 保存当前笔画数据（在 finalizeStroke 清空之前）
-  const strokeData = canvasStore.currentStroke.length > 0 && fabricCanvas ? {
-    playerId: '',
-    points: canvasStore.currentStroke.map((p) => ({ x: p.x / (fabricCanvas!.width ?? 1), y: p.y / (fabricCanvas!.height ?? 1) })),
-    color: canvasStore.tool === 'eraser' ? ERASER_COLOR : canvasStore.color,
-    width: canvasStore.tool === 'eraser' ? canvasStore.width * ERASER_WIDTH_MULTIPLIER : canvasStore.width,
-    tool: canvasStore.tool,
-    strokeSeq,
-  } : null
-  
-  if (canvasStore.currentStroke.length > 0) emitStroke()
-  finalizeStroke()
-  
-  // 清除临时路径对象
-  currentPathObject = null
-  
-  // 触发完整重绘（包含刚完成的笔画）
-  renderCompletedStrokes(strokeData ? [strokeData] : undefined)
+  const hadStroke = canvasStore.currentStroke.length > 0
+  if (hadStroke) {
+    const thisSeq = strokeSeq
+    emitStroke()
+    finalizeStroke()
+    const newStroke = findOwnStroke(thisSeq)
+    if (newStroke) addStrokesToCanvas([newStroke])
+  }
   
   if (pendingResize) { pendingResize = false; resizeCanvas() }
+}
+
+// 从末尾匹配自己刚完成的笔画：断线重连后本地 strokeSeq 重新计数，
+// 与 allStrokes 同步的旧笔画 seq 冲突时取最新的，避免旧笔画被重复添加
+function findOwnStroke(seq: number) {
+  const myId = useRoomStore().currentPlayerId
+  if (!myId) return undefined
+  for (let i = gameStore.strokes.length - 1; i >= 0; i--) {
+    const s = gameStore.strokes[i]
+    if (s.playerId === myId && s.strokeSeq === seq) return s
+  }
+  return undefined
 }
 
 function simplifyPath(points: Point[], epsilon: number): Point[] {
@@ -211,8 +206,7 @@ function finalizeStroke() {
   canvasStore.isDrawing = false
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function renderCompletedStrokes(extraStrokes?: any[]) {
+function renderAllStrokes() {
   if (!fabricCanvas) return
   const cw = fabricCanvas.width ?? 1
   const ch = fabricCanvas.height ?? 1
@@ -221,41 +215,13 @@ function renderCompletedStrokes(extraStrokes?: any[]) {
   fabricCanvas.backgroundColor = CANVAS_BG_COLOR
   strokePathMap.clear()
 
-  // 合并 gameStore.strokes 和额外传入的笔画
-  const allStrokes = [...gameStore.strokes, ...(extraStrokes ?? [])]
-
-  for (const stroke of allStrokes) {
-    if (stroke.points.length === 0) continue
-    if (stroke.points.length === 1) {
-      const p = stroke.points[0]
-      const radius = stroke.width / 2
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const circle = new (fabric as any).Circle({
-        left: p.x * cw - radius,
-        top: p.y * ch - radius,
-        radius,
-        fill: stroke.color,
-        selectable: false,
-        evented: false,
-      })
-      fabricCanvas.add(circle)
-      continue
-    }
-    const pathData = stroke.points
-      .map((p: Point, i: number) => `${i === 0 ? 'M' : 'L'} ${p.x * cw} ${p.y * ch}`)
-      .join(' ')
-    const path = new fabric.Path(pathData, {
-      stroke: stroke.color,
-      strokeWidth: stroke.width,
-      fill: null,
-      strokeLineCap: 'round',
-      strokeLineJoin: 'round',
-      selectable: false,
-      evented: false,
-    })
-    fabricCanvas.add(path)
-    if (stroke.strokeSeq !== undefined && stroke.playerId) {
-      strokePathMap.set(`${stroke.playerId}:${stroke.strokeSeq}`, path)
+  for (const stroke of gameStore.strokes) {
+    const obj = createStrokeObject(stroke, cw, ch)
+    if (obj) {
+      fabricCanvas.add(obj)
+      if (stroke.strokeSeq !== undefined && stroke.playerId) {
+        strokePathMap.set(`${stroke.playerId}:${stroke.strokeSeq}`, obj)
+      }
     }
   }
 
@@ -264,24 +230,83 @@ function renderCompletedStrokes(extraStrokes?: any[]) {
   fabricCanvas.renderAll()
 }
 
+function addStrokesToCanvas(strokes: Array<{ playerId: string; points: Point[]; color: string; width: number; tool: string; strokeSeq?: number }>) {
+  if (!fabricCanvas) return
+  const cw = fabricCanvas.width ?? 1
+  const ch = fabricCanvas.height ?? 1
+
+  if (currentPathObject) {
+    fabricCanvas.remove(currentPathObject)
+    currentPathObject = null
+  }
+
+  for (const stroke of strokes) {
+    const obj = createStrokeObject(stroke, cw, ch)
+    if (obj) {
+      fabricCanvas.add(obj)
+      if (stroke.strokeSeq !== undefined && stroke.playerId) {
+        strokePathMap.set(`${stroke.playerId}:${stroke.strokeSeq}`, obj)
+      }
+    }
+  }
+
+  renderCurrentStroke()
+  fabricCanvas.renderAll()
+}
+
+function createStrokeObject(stroke: { points: Point[]; color: string; width: number; playerId?: string; strokeSeq?: number; tool?: string }, cw: number, ch: number): FabricObject | null {
+  if (stroke.points.length === 0) return null
+  if (stroke.points.length === 1) {
+    const p = stroke.points[0]
+    const radius = stroke.width / 2
+    return new fabric.Circle({
+      left: p.x * cw - radius,
+      top: p.y * ch - radius,
+      radius,
+      fill: stroke.color,
+      selectable: false,
+      evented: false,
+    })
+  }
+  const pathData = stroke.points
+    .map((p: Point, i: number) => `${i === 0 ? 'M' : 'L'} ${p.x * cw} ${p.y * ch}`)
+    .join(' ')
+  return new fabric.Path(pathData, {
+    stroke: stroke.color,
+    strokeWidth: stroke.width,
+    fill: null,
+    strokeLineCap: 'round',
+    strokeLineJoin: 'round',
+    selectable: false,
+    evented: false,
+  })
+}
+
 function renderCurrentStroke() {
   if (!fabricCanvas) return
 
   const points = canvasStore.currentStroke
-  if (points.length === 0) return
-
-  const currentColor = canvasStore.tool === 'eraser' ? ERASER_COLOR : canvasStore.color
-  const currentWidth = canvasStore.tool === 'eraser' ? canvasStore.width * ERASER_WIDTH_MULTIPLIER : canvasStore.width
 
   // 获取 Fabric.js 的上层 canvas（用户看到的层）
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const upperCanvas = (fabricCanvas as any).upperCanvasEl as HTMLCanvasElement | undefined
+  const upperCanvas = fabricCanvas.upperCanvasEl
   if (!upperCanvas) return
   const ctx = upperCanvas.getContext('2d')
   if (!ctx) return
 
   // 清除上层 canvas（直接清除整个画布，因为这只是临时绘制层）
   ctx.clearRect(0, 0, upperCanvas.width, upperCanvas.height)
+
+  if (points.length === 0) {
+    // 无进行中的笔画：同步移除临时对象，防止抬笔后上层残留导致双重渲染
+    if (currentPathObject) {
+      fabricCanvas.remove(currentPathObject)
+      currentPathObject = null
+    }
+    return
+  }
+
+  const currentColor = canvasStore.tool === 'eraser' ? ERASER_COLOR : canvasStore.color
+  const currentWidth = canvasStore.tool === 'eraser' ? canvasStore.width * ERASER_WIDTH_MULTIPLIER : canvasStore.width
 
   if (points.length === 1) {
     // 单点用圆形
@@ -314,8 +339,7 @@ function renderCurrentStroke() {
   if (points.length === 1) {
     const p = points[0]
     const radius = currentWidth / 2
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    currentPathObject = new (fabric as any).Circle({
+    currentPathObject = new fabric.Circle({
       left: p.x - radius,
       top: p.y - radius,
       radius,
@@ -373,14 +397,24 @@ function resizeCanvas() {
 
   fabricCanvas.setWidth(w)
   fabricCanvas.setHeight(h)
-  renderCompletedStrokes()
+  renderAllStrokes()
 }
+
+let prevStrokeCount = -1
 
 watch(() => gameStore.strokeVersion, () => {
   if (!fabricCanvas) return
   if (gameStore.pendingFullRedraw) {
-    strokePathMap.clear()
-    renderCompletedStrokes()
+    const currentCount = gameStore.strokes.length
+    const isFirstRender = strokePathMap.size === 0 || prevStrokeCount < 0
+
+    if (currentCount === prevStrokeCount + 1 && !isFirstRender) {
+      const lastStroke = gameStore.strokes[currentCount - 1]
+      if (lastStroke) addStrokesToCanvas([lastStroke])
+    } else {
+      renderAllStrokes()
+    }
+    prevStrokeCount = currentCount
     gameStore.pendingFullRedraw = false
   }
 })
@@ -388,7 +422,7 @@ watch(() => gameStore.strokeVersion, () => {
 watch(() => gameStore.currentWord, () => {
   if (gameStore.currentWord !== null && gameStore.isMyTurn) {
     canvasStore.clearCanvas()
-    if (fabricCanvas) renderCompletedStrokes()
+    if (fabricCanvas) renderAllStrokes()
   }
 })
 
@@ -396,7 +430,7 @@ watch(() => gameStore.currentWord, () => {
 // 初始化后同步一次确保不丢失
 function syncExistingStrokes() {
   if (gameStore.strokes.length > 0) {
-    renderCompletedStrokes()
+    renderAllStrokes()
   }
 }
 
@@ -440,7 +474,7 @@ onMounted(() => {
 
   window.addEventListener('keydown', handleUndoKey)
 
-  renderCompletedStrokes()
+  renderAllStrokes()
   syncExistingStrokes()
 })
 
