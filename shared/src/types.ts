@@ -60,6 +60,7 @@ export interface Room {
   roundsPerPlayer: number;
   gameType: GameType;
   lastActivityAt: number;
+  gameStartTime: number | null;
 }
 
 // === Drawing ===

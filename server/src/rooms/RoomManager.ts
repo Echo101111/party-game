@@ -41,6 +41,7 @@ function createRoom(name: string, maxPlayers: number, password: string, owner: P
     roundsPerPlayer: roundsPerPlayer ?? DEFAULT_ROUNDS_PER_PLAYER,
     gameType,
     lastActivityAt: now,
+    gameStartTime: null,
   }
 }
 
@@ -245,6 +246,7 @@ export class RoomManager {
     room.totalRounds = (room.gameType === 'spy' ? room.players.length : drawerCount) * room.roundsPerPlayer
     room.state = 'playing'
     room.currentRound = 1
+    room.gameStartTime = Date.now()
     room.players.forEach((p) => {
       p.score = 0
       p.hasGuessedCorrectly = false

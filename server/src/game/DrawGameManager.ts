@@ -3,6 +3,7 @@ import { roomManager } from '../rooms/index.js'
 import { CATEGORY_DISPLAY_NAMES, WORD_CATEGORIES, WORDS } from '../data/words.js'
 import { matchAnswer, getWordEntry } from '../data/wordIndex.js'
 import { getAllCustomWordEntries } from '../data/customWordBank.js'
+import { addGameHistory } from '../data/gameHistoryStore.js'
 import type { Room, Player, Point, Stroke } from '@draw-and-guess/shared'
 
 interface RoundTimer {
@@ -581,6 +582,21 @@ export class GameManager {
 
     const scores = this.getScoreboard(room)
     const winner = scores.length > 0 ? scores[0].nickname : null
+
+    addGameHistory({
+      roomName: room.name,
+      gameType: 'draw',
+      startTime: room.gameStartTime ?? Date.now(),
+      endTime: Date.now(),
+      totalRounds: room.totalRounds,
+      players: scores.map((s) => ({
+        playerId: s.playerId,
+        nickname: s.nickname,
+        score: s.score,
+        isOwner: room.players.find((p) => p.id === s.playerId)?.isOwner ?? false,
+      })),
+      winner: winner ?? '',
+    })
 
     const io = this.getIO()
     if (io) {

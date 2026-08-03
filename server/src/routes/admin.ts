@@ -7,10 +7,11 @@ import { feedbackStore } from './feedback.js'
 import { roomManager } from '../rooms/index.js'
 import { drawGameManager } from '../game/index.js'
 import { spyGameManager } from '../game/SpyGameManager.js'
+import { getAllGameHistory } from '../data/gameHistoryStore.js'
 
 export const adminRouter: Router = Router()
 
-function layout(title: string, body: string, activeTab: 'words' | 'feedback' | 'rooms'): string {
+function layout(title: string, body: string, activeTab: 'words' | 'feedback' | 'rooms' | 'history'): string {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -61,6 +62,7 @@ function layout(title: string, body: string, activeTab: 'words' | 'feedback' | '
   <a href="/admin/words" class="${activeTab === 'words' ? 'active' : ''}"><span class="icon">📖</span>词库管理</a>
   <a href="/admin/feedback" class="${activeTab === 'feedback' ? 'active' : ''}"><span class="icon">💬</span>反馈建议</a>
   <a href="/admin/rooms" class="${activeTab === 'rooms' ? 'active' : ''}"><span class="icon">🚪</span>房间状态</a>
+  <a href="/admin/history" class="${activeTab === 'history' ? 'active' : ''}"><span class="icon">🕘</span>历史游玩</a>
 </div>
 ${body}
 </body>
@@ -392,4 +394,101 @@ ${roomList.length > 0 ? `
 `
 
   res.send(layout('房间状态', body, 'rooms'))
+})
+
+// GET /admin/history — 历史游玩记录
+adminRouter.get('/history', requireAdminToken, (_req: Request, res: Response) => {
+  const history = [...getAllGameHistory()].sort((a, b) => b.endTime - a.endTime)
+  const hasRows = history.length > 0
+
+  const rows = history.map((h) => {
+    const durationSec = Math.max(1, Math.round((h.endTime - h.startTime) / 1000))
+    const durationLabel = durationSec >= 60
+      ? `${Math.floor(durationSec / 60)}分${durationSec % 60}秒`
+      : `${durationSec}秒`
+    const winner = h.winner ? escapeHtml(h.winner) : '—'
+    const detailRows = h.players.map((p, i) => `
+      <tr class="detail-row" data-id="${h.id}" hidden>
+        <td></td>
+        <td class="detail-cell" colspan="6">
+          <span class="rank">#${i + 1}</span>
+          <span class="score-chip">${p.score} 分</span>
+          ${escapeHtml(p.nickname)}${p.isOwner ? ' 👑' : ''}
+        </td>
+      </tr>
+    `).join('\n')
+
+    return `
+    <tr class="history-row" data-id="${h.id}">
+      <td><strong>${escapeHtml(h.roomName)}</strong></td>
+      <td>🎨 你画我猜</td>
+      <td class="col-time">${new Date(h.endTime).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</td>
+      <td>${durationLabel}</td>
+      <td>${h.totalRounds} 轮</td>
+      <td>${h.players.length} 人</td>
+      <td>${winner}</td>
+    </tr>
+    ${detailRows}`
+  }).join('\n')
+
+  const body = `
+<style>
+  .stats-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    flex: 1;
+    min-width: 100px;
+    background: #fff;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    box-shadow: 0 2px 8px rgba(180,140,110,0.08);
+    text-align: center;
+  }
+  .stat-card .num { font-size: 1.6rem; font-weight: 700; color: #4A3728; }
+  .stat-card .label { font-size: 0.75rem; color: #8B7A6A; margin-top: 0.15rem; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(180,140,110,0.1); }
+  th, td { padding: 0.5rem 0.65rem; text-align: left; font-size: 0.83rem; vertical-align: top; }
+  th { background: #F7EFE6; font-weight: 600; white-space: nowrap; }
+  tr:not(:last-child) td { border-bottom: 1px solid #F0E4D8; }
+  tr.detail-row td { border-bottom: 1px dashed #F0E4D8; background: #FBF6EF; padding: 0.35rem 0.65rem; }
+  .col-time { width: 150px; white-space: nowrap; }
+  .history-row { cursor: pointer; transition: background 0.15s; }
+  .history-row:hover { background: #FBF6EF; }
+  .detail-cell { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .rank { color: #B5A392; font-size: 0.75rem; font-weight: 600; }
+  .score-chip {
+    background: #F0E4D8;
+    color: #E8856C;
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .empty { color: #B5A392; text-align: center; padding: 3rem; font-size: 0.9rem; }
+</style>
+<div class="stats-row">
+  <div class="stat-card"><div class="num">${history.length}</div><div class="label">历史对局</div></div>
+  <div class="stat-card"><div class="num">${history.reduce((sum, h) => sum + h.players.length, 0)}</div><div class="label">参与人次</div></div>
+</div>
+${hasRows ? `
+<table>
+<thead><tr><th>房间名</th><th>游戏类型</th><th>结束时间</th><th>时长</th><th>轮次</th><th>人数</th><th>赢家</th></tr></thead>
+<tbody>${rows}</tbody>
+</table>
+<p class="empty" style="padding:1rem 0 0;font-size:0.8rem;">点击行查看玩家分数明细</p>` : '<div class="empty">暂无历史对局</div>'}
+<script>
+document.querySelectorAll('.history-row').forEach(function(row) {
+  row.addEventListener('click', function() {
+    var id = row.getAttribute('data-id')
+    var detail = document.querySelector('tr.detail-row[data-id="' + id + '"]')
+    if (detail) detail.hidden = !detail.hidden
+  })
+})
+</script>`
+
+  res.send(layout('历史游玩', body, 'history'))
 })
